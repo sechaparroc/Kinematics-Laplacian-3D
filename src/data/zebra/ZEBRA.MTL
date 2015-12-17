@@ -1,0 +1,23 @@
+# Wavefront material library
+# Tue Aug 03 07:52:45 1999
+# Created with Viewpoint Interchange www.viewpoint.com
+
+newmtl zeb_body
+  Ka 0 0 0
+  Kd 0 0 0
+  Ks 0 0 0
+  illum 2
+  map_Kd images\Zebra.tif
+
+newmtl zeb_iris
+  Ka 0 0 0
+  Kd 0 0 0
+  Ks 0 0 0
+  illum 2
+  map_Kd images\eye_brn1.TIF
+
+newmtl zeb_eye
+  Ka 0 0 0
+  Kd 1 0.988235 0.941176
+  Ks 1 0.988235 0.941176
+  illum 2
