@@ -7,10 +7,11 @@ import remixlab.dandelion.core.*;
 
 //the angle of a bone is the angle btwn the bone and its parent
 
-public class Bone extends InteractiveFrame{
-  float radius = 10;
+public class Bone extends GenericP5Frame{
+  float radiusX = 1, radiusY = 10;
   int colour = -1;
   Skeleton skeleton;
+  boolean selected = false;
   ArrayList<Bone> children = new ArrayList<Bone>();
   Bone parent = null;  
   Joint joint_axis_x = null;
@@ -19,20 +20,37 @@ public class Bone extends InteractiveFrame{
   Vec model_pos;
   Vec prev_angle = new Vec(0,0,0);
   Vec prev_pos = new Vec(0,0,0);  
+  
+  //Vars used for IKinematics purpose
+  Vec final_ef_pos;
+  boolean is_end_effector = false;
+  float weight = 1;
+  float max_weight = 20;
 
   float PI = (float) Math.PI;
 
+  public void setupProfile(){
+	  this.setClickBinding(MouseAgent.LEFT_ID, 1, "performClickEvent");
+	  this.setClickBinding(MouseAgent.RIGHT_ID, 1, "performClickEvent");
+	  this.setMotionBinding(MouseAgent.LEFT_ID, "performMotionEvent");
+	  this.setMotionBinding(MouseAgent.RIGHT_ID, "performMotionEvent");
+	  this.setMotionBinding(MouseAgent.WHEEL_ID, "performWheelEvent");
+  }
+  
   public Bone(Scene sc){
     super(sc);
     skeleton = new Skeleton(sc); 
     joint_axis_x = new Joint();
     joint_axis_y = new Joint();
     joint_axis_z = new Joint();
-    colour = sc.pApplet().color(0,255,0);
+    colour = sc.pApplet().color((float)Math.random()*255f, 
+    		  (float) Math.random()*255f, (float) Math.random()*255f);
+    setupProfile();    
   }
   public Bone(Scene sc, Bone b, boolean isChild){
     super(sc);
-    colour = sc.pApplet().color(0,255,0);    
+    colour = sc.pApplet().color((float)Math.random()*255f, 
+    		  (float) Math.random()*255f, (float) Math.random()*255f);
     joint_axis_x = new Joint();
     joint_axis_y = new Joint();
     joint_axis_z = new Joint();
@@ -43,7 +61,8 @@ public class Bone extends InteractiveFrame{
     else{
       children.add(b);
       b.parent = this;
-    } 
+    }
+    setupProfile();    
   }
 
   public Bone(Scene sc, Bone p, Bone c){
@@ -53,6 +72,7 @@ public class Bone extends InteractiveFrame{
     joint_axis_z = new Joint();
     children.add(c); parent = p;
     p.children.add(this);
+    setupProfile();    
   }  
 
   void updateMainFrame(Frame frame){
@@ -150,6 +170,25 @@ public class Bone extends InteractiveFrame{
     		+ "az : " + joint_axis_z.angle + " pos " + position());
   }
   
+  public void applyRotation(Quat q){
+	  Vec pos = translation().get();
+	  pos.normalize(pos);
+	  pos = q.rotate(pos);
+	  pos.multiply(translation().magnitude());
+	  this.setTranslation(pos);
+	  Quat cur = new Quat(joint_axis_x.angle, joint_axis_y.angle, joint_axis_z.angle);
+	  cur.compose(q);
+	  cur.normalize();
+	  Vec angle = cur.eulerAngles();
+	  joint_axis_x.angle = angle.x() >= -1* PI && angle.x() <= PI ? angle.x() : joint_axis_x.angle;
+	  joint_axis_y.angle = angle.y() >= -1* PI && angle.y() <= PI ? angle.y() : joint_axis_y.angle;
+	  joint_axis_z.angle = angle.z() >= -1* PI && angle.z() <= PI ? angle.z() : joint_axis_z.angle;
+	  
+	  System.out.println("ax : " + joint_axis_x.angle + " " + "ay : " + joint_axis_y.angle
+    		+ "az : " + joint_axis_z.angle + " pos " + position());
+	  
+  }
+  
 
   //get a vector translated in X according to the projection view
   public Vec getVecTranslatedX(float delta){
@@ -167,7 +206,7 @@ public class Bone extends InteractiveFrame{
 	  q.normalize();
 	  Vec angle = q.eulerAngles();
 
-	  Bone b = new Bone((Scene) scene, this, false);
+	  Bone b = new Bone(scene(), this, false);
       b.joint_axis_x = new Joint((float)-1.* PI,PI, angle.x());
       b.joint_axis_y = new Joint((float)-1.* PI,PI, angle.y());
       b.joint_axis_z = new Joint((float)-1.* PI,PI, angle.z());
@@ -219,23 +258,17 @@ public class Bone extends InteractiveFrame{
 
   @Override
   public boolean checkIfGrabsInput(float x, float y){
-    float threshold = radius;
+    float thresholdX = radiusX;
+    float thresholdY = radiusY;
     Vec proj = scene().eye().projectedCoordinatesOf(position());
-    if((Math.abs(x - proj.vec[0]) < threshold) && (Math.abs(y - proj.vec[1]) < threshold)){
+    if((Math.abs(x - proj.vec[0]) < thresholdY) && (Math.abs(y - proj.vec[1]) < thresholdY)){
       return true;      
     }
     return false;
   }
 
-  //scroll action will increase or decrease the detail of the shape
-  @Override
-  public void performCustomAction(DOF1Event event) {   
-      gestureScale(event, wheelSensitivity());
-  }
-
   
-  @Override
-  public void performCustomAction(ClickEvent event) {
+  public void performClickEvent(ClickEvent event) {
     if(Kinematics.add_bone){
       if(event.id() == 39){
         Kinematics.removeSkeleton();
@@ -247,29 +280,35 @@ public class Bone extends InteractiveFrame{
       }
     } 
     else{
-      //change color and highlight as selected
-      if(Kinematics.last_selected_bone != null){
-    	  Kinematics.last_selected_bone.colour = ((Scene) scene).pApplet().color(0,255,0);
-      }
-      Kinematics.last_selected_bone = this;
-      //update Joint control
-      Kinematics.control_frame.setupControlShape(Kinematics.current_axis);
-      colour = ((Scene) scene).pApplet().color(0,0,255);
+        //change color and highlight as selected
+        if(Kinematics.last_selected_bone != null){
+      	  Kinematics.last_selected_bone.selected = false;
+        }
+        Kinematics.last_selected_bone = this;
+        //update Joint control
+        Kinematics.control_frame.setupControlShape(Kinematics.current_axis);
+        selected = true;
     }
   }
   
-  @Override
-  public void performCustomAction(DOF2Event event) {
+  public void performMotionEvent(DOF2Event event) {
 	if(event.id() == 39 || parent == null){  
+		//if is end effector modify the final position
+		if(is_end_effector){
+		    Vec dif = screenToVec(Vec.multiply(new Vec(isEyeFrame() ? -event.dx() : event.dx(),
+			        (scene().isRightHanded() ^ isEyeFrame()) ? -event.dy() : event.dy(), 0.0f), this.translationSensitivity()));    
+			final_ef_pos.add(dif);
+			return;
+		}
 		if(Kinematics.add_bone){
 		  translate(screenToVec(Vec.multiply(new Vec(isEyeFrame() ? -event.dx() : event.dx(),
-		      (scene.isRightHanded() ^ isEyeFrame()) ? -event.dy() : event.dy(), 0.0f), translationSensitivity())));    
+		      (scene().isRightHanded() ^ isEyeFrame()) ? -event.dy() : event.dy(), 0.0f), translationSensitivity())));    
 		  skeleton.updateAngles();
 		  return;
 		}
 		//Translate the skeleton Frame
 		skeleton.frame.translate(skeleton.frame.screenToVec(Vec.multiply(new Vec(skeleton.frame.isEyeFrame() ? -event.dx() : event.dx(),
-		    (scene.isRightHanded() ^ skeleton.frame.isEyeFrame()) ? -event.dy() : event.dy(), 0.0f), skeleton.frame.translationSensitivity())));    
+		    (scene().isRightHanded() ^ skeleton.frame.isEyeFrame()) ? -event.dy() : event.dy(), 0.0f), skeleton.frame.translationSensitivity())));    
 
 	}
 	else if(event.id() == 37){ 
@@ -278,10 +317,38 @@ public class Bone extends InteractiveFrame{
 	}
   }
   
+  public void performWheelEvent(DOF1Event event){
+	  if(Kinematics.enable_mod_ef){
+		  switchEndEffectorMode(event);
+		  return;
+	  }
+	  //enable to change the radius of the bone
+	  if(Kinematics.enable_mod_rad){
+		  radiusX += event.dx()*0.125f;
+		  radiusX = radiusX <= 0 ? 0 : radiusX; 
+		  return;
+	  }
+	  //change the weight of the bone. More weight means it's harder to mov 
+	  if(Kinematics.enable_mod_w){
+		  weight += event.dx();
+		  weight = weight > max_weight ? max_weight : weight;
+		  weight = weight < 1 ? 1 : weight;
+		  System.out.println("Bone Weight ----: " + weight);
+	  }
+  }
+  
+  public void switchEndEffectorMode(DOF1Event event){
+	  is_end_effector = Kinematics.enable_ef;
+	  if(is_end_effector){
+		  final_ef_pos = position();
+	  }
+	  System.out.println("The bone is now end effector? : " + is_end_effector);
+  }
+  
   //Simulate rotation
   public void rotate(DOF2Event event){
 	  Vec delta =  screenToVec(Vec.multiply(new Vec(isEyeFrame() ? -event.dx() : event.dx(),
-	          (scene.isRightHanded() ^ isEyeFrame()) ? -event.dy() : event.dy(), 0.0f), translationSensitivity()));
+	          (scene().isRightHanded() ^ isEyeFrame()) ? -event.dy() : event.dy(), 0.0f), translationSensitivity()));
 	  Quat q = getAngleFromPos(delta);
 	  q.normalize();
 	  Vec angle = q.eulerAngles();
@@ -297,14 +364,46 @@ public class Bone extends InteractiveFrame{
   public void drawShape(){
       Vec aux = parent == null ? null : parent.inverseCoordinatesOf(new Vec(0,0,0));
       Vec aux2 = inverseCoordinatesOf(new Vec(0,0,0));
-      Kinematics.main_graphics.pushStyle();
+      //getting a point in the plane defined by the normal aux2 - aux
+      Vec normal = aux != null ? Vec.subtract(aux2, aux) : aux2.get();
+      float dot = normal.dot(aux2);
+      //get a point in the given plane
+      Vec u = Math.abs(normal.z()) >= 0.001 ? new Vec(1,0,0) : new Vec(0,0,1);
+      float u_z = u.x() != 0 ? dot - normal.x()/normal.z() : dot - normal.z()/normal.x(); 
+      u = u.x() != 0 ? new Vec(u.x(),u.y(),u_z) : new Vec(u_z,u.y(),u.z());
+      //get v
+      Vec v = new Vec();
+      v = Vec.cross(u, normal, v);
+      //normalize the vectors
+      u.normalize();v.normalize();
+      scene().pg().pushStyle();
       if(aux != null){
-    	  Kinematics.main_graphics.stroke(255,255,255);        
-    	  Kinematics.main_graphics.line(aux2.x(),aux2.y(),aux2.z(),aux.x(), aux.y(), aux.z());
+    	  //if the bone is lighter, it means more transparency
+		  scene().pg().stroke(255,255,255, 50 + 200*weight/max_weight*1.f);        
+		  scene().pg().line(aux2.x(),aux2.y(),aux2.z(),aux.x(), aux.y(), aux.z());
       }
-      Kinematics.main_graphics.strokeWeight(radius);
-      Kinematics.main_graphics.stroke(colour);
-      Kinematics.main_graphics.point(aux2.x(),aux2.y(),aux2.z());
-      Kinematics.main_graphics.popStyle();
+      if(is_end_effector){
+		  scene().pg().stroke(255,0,0,50);
+		  Vec aux3 = final_ef_pos;
+		  if(Vec.distance(aux2, aux3) != 0)
+			  scene().pg().line(aux3.x(),aux3.y(),aux3.z(),aux2.x(), aux2.y(), aux2.z());
+      }
+      if(!selected)scene().pg().stroke(colour);
+      else scene().pg().stroke(scene().pg().color(0,0,255));
+      scene().pg().pushMatrix();
+      scene().pg().translate(aux2.x(), aux2.y(), aux2.z());	
+	  scene().pg().line(-radiusX*v.x(),-radiusX*v.y(),-radiusX*v.z(),
+			  radiusX*v.x(),radiusX*v.y(),radiusX*v.z());      
+	  scene().pg().line(-radiusX*u.x(),-radiusX*u.y(),-radiusX*u.z(),
+			  radiusX*u.x(),radiusX*u.y(),radiusX*u.z());            
+	  scene().pg().popMatrix();
+	  scene().pg().strokeWeight(radiusY);      
+      scene().pg().point(aux2.x(),aux2.y(),aux2.z());
+      if(is_end_effector){
+		  scene().pg().stroke(255,0,0,50);
+    	  Vec aux3 = final_ef_pos;
+		  if(Vec.distance(aux2, aux3) != 0)scene().pg().point(aux3.x(),aux3.y(),aux3.z());
+      }
+      scene().pg().popStyle();	  
   }
 }

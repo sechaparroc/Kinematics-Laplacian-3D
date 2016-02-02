@@ -6,7 +6,7 @@ import remixlab.dandelion.geom.*;
 import remixlab.proscene.*;
 
 //Joint Interactive Class
-public class JointControl extends InteractiveModelFrame{
+public class JointControl extends InteractiveFrame{
   float PI = (float) Math.PI;    
 
   public class Pointer{
@@ -36,10 +36,16 @@ public class JointControl extends InteractiveModelFrame{
   Joint current_Joint; //This is an independent scene which related Joint is gonna be the last chosen
   float main_radius = 100;
   
+  public void setupProfile(){
+	  this.setMotionBinding(MouseAgent.LEFT_ID, "movePointer");
+	  this.setMotionBinding(MouseAgent.RIGHT_ID, "movePointer");
+  }  
+  
   public JointControl(Scene sc){
     super(sc);
     float[] values = {(float)-1.*PI,0, 0, PI};
     setupControlShape(values);
+    setupProfile();
   }
   
   
@@ -51,8 +57,8 @@ public class JointControl extends InteractiveModelFrame{
     p.position = getPosition(v,r);
     float c_r = 15;
     p.size = c_r;     
-    ((Scene) scene).pApplet();
-	PShape s = ((Scene) scene).pApplet().
+    scene().pApplet();
+	PShape s = scene().pApplet().
     		createShape(PConstants.ELLIPSE, p.position.x() - c_r*(float)(1./2.), 
     				p.position.y() - c_r*(float)(1./2.), c_r,c_r);
     s.fill(255,255,255);
@@ -81,11 +87,11 @@ public class JointControl extends InteractiveModelFrame{
   public void setupControlShape(float[] values){
     float radius_step = main_radius*(float)1./(values.length + 1);
     float rad = (float)0.;
-    PShape p = ((Scene) scene).pApplet().createShape(PConstants.GROUP);
+    PShape p = scene().pApplet().createShape(PConstants.GROUP);
     for(int i = 0; i < values.length; i++){
-      PShape circ = ((Scene) scene).pApplet().createShape(PConstants.ELLIPSE,-main_radius + radius_step*i,
+      PShape circ = scene().pApplet().createShape(PConstants.ELLIPSE,-main_radius + radius_step*i,
     		  - main_radius + radius_step*i, 2*(main_radius - radius_step*i),2*(main_radius - radius_step*i));
-      circ.setFill(((Scene) scene).pApplet().color((int)(Math.random()*255),
+      circ.setFill(scene().pApplet().color((int)(Math.random()*255),
     		  (int)(Math.random()*255),(int)(Math.random()*255)));            
       p.addChild(circ);
     }
@@ -123,10 +129,9 @@ public class JointControl extends InteractiveModelFrame{
   
   
 
-  @Override
-  public void performCustomAction(DOF2Event event) {    
+  public void movePointer(DOF2Event event) {    
       if(Kinematics.last_selected_bone == null) return;
-      Vec point_world = ((Scene) scene).eye().unprojectedCoordinatesOf(new Vec(event.x(), event.y()));
+      Vec point_world = scene().eye().unprojectedCoordinatesOf(new Vec(event.x(), event.y()));
       Vec point_shape = coordinatesOf(point_world);
       int p = getNearestPointer(point_shape.x(), point_shape.y());      
       if(p == -1) return;

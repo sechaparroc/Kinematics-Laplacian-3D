@@ -3,7 +3,6 @@ public class Joint{
   float min_angle;  
   float stable_angle;
   float angle;  
-  int pos = 0; //0 means to rot according to the upperbound, 1 according to the lowerbound
   float PI = (float) Math.PI;
   
   public Joint(){

@@ -11,7 +11,6 @@ import remixlab.dandelion.constraint.Constraint;
 import remixlab.dandelion.constraint.EyeConstraint;
 import remixlab.dandelion.constraint.AxisPlaneConstraint.Type;
 import remixlab.dandelion.core.Camera;
-import remixlab.dandelion.core.Constants.*;
 import remixlab.dandelion.geom.*;
 
 /*
@@ -72,13 +71,6 @@ public class Kinematics extends PApplet{
 	  aux_scene.setAxesVisualHint(true);
 	  aux_scene.setGridVisualHint(false);
 	  main_scene.setRadius(50);
-	  main_scene.mouseAgent().setButtonBinding(Target.FRAME, RIGHT, DOF2Action.CUSTOM);
-	  main_scene.mouseAgent().setButtonBinding(Target.FRAME, LEFT, DOF2Action.CUSTOM);
-	  main_scene.mouseAgent().setClickBinding(Target.FRAME, LEFT, ClickAction.CUSTOM);
-	  main_scene.mouseAgent().setClickBinding(Target.FRAME, RIGHT, ClickAction.CUSTOM);
-	  main_scene.mouseAgent().setWheelBinding(Target.FRAME, DOF1Action.CUSTOM);  
-	  aux_scene.mouseAgent().setButtonBinding(Target.FRAME, RIGHT, DOF2Action.CUSTOM);
-	  aux_scene.mouseAgent().setButtonBinding(Target.FRAME,  LEFT , DOF2Action.CUSTOM);
 	  main_scene.camera().setType(Camera.Type.ORTHOGRAPHIC);
 	  aux_scene.camera().setType(Camera.Type.ORTHOGRAPHIC);
 	  AxisPlaneConstraint constrain = new EyeConstraint(aux_scene.eye());
@@ -86,10 +78,10 @@ public class Kinematics extends PApplet{
 	  aux_scene.eye().frame().setConstraint(constrain);
 	  control_frame = new JointControl(aux_scene);
 	  //set up the mesh to load
-	  figure = loadShape("human.obj");
+	  figure = loadShape("human2.obj");
 	  original_fig = new Utilities.CustomModelFrame(main_scene, figure);
 	  //original_fig.translate(-50,50,0);
-	  original_fig.scale(2f);
+	  original_fig.scale(3f);
 	  //original_fig.rotate(0,0,PI,0);
 	  //get bounding rect center
 	  r_bounds = Utilities.getCube(figure);
@@ -111,6 +103,7 @@ public class Kinematics extends PApplet{
 	  original_fig.draw();
 	  if(bounding_rect) Utilities.drawCube(original_fig, main_graphics);
 	  drawBones();
+	  IKinematics.drawAnchors(main_scene, original_fig);	  
 	  main_scene.endDraw();
 	  main_graphics.endDraw();    
 	 image(main_graphics, main_scene.originCorner().x(), main_scene.originCorner().y());
@@ -118,7 +111,7 @@ public class Kinematics extends PApplet{
 	    aux_graphics.beginDraw();
 	    aux_scene.beginDraw();
 	    aux_graphics.background(125, 125, 125, 125);
-	    aux_scene.drawModels();
+	    aux_scene.drawFrames();
 	    aux_scene.endDraw();
 	    aux_graphics.endDraw();    
 	    image(aux_graphics, aux_scene.originCorner().x(), aux_scene.originCorner().y());
@@ -176,6 +169,11 @@ public class Kinematics extends PApplet{
 	  }
 	}
 	boolean temp = false;
+	static boolean enable_ef = false;
+	static boolean enable_mod_ef = false;
+	static boolean enable_mod_rad = true;
+	static boolean enable_mod_w = false;
+	
 	public void keyPressed(){  
 	  //if(key == 'x' || key== 'X'){
 	  //  temp = !temp;
@@ -194,7 +192,7 @@ public class Kinematics extends PApplet{
 	  if(key=='b' || key=='B'){
 	    add_bone = !add_bone;
 	    if(last_selected_bone != null){
-	      last_selected_bone.colour = color(0,255,0);
+	      last_selected_bone.selected = false;
 	    }
 	    last_selected_bone = null;
 	  }
@@ -208,14 +206,35 @@ public class Kinematics extends PApplet{
 	  if(key == 'l' || key == 'L'){
 		  IKinematics.applyTransformations(original_fig);
 	  }
-	  if(key == '1'){
+	  if(key == '4'){
 		  current_axis = 0;
 	  }
-	  if(key == '2'){
+	  if(key == '5'){
 		  current_axis = 1;
 	  }
-	  if(key == '3'){
+	  if(key == '6'){
 		  current_axis = 2;
+	  }
+	  if(key == 'n' || key == 'N'){
+		  enable_ef = !enable_ef;
+	  }
+	  if(key == 'm' || key == 'M'){
+		  IKinematics.executeDLS();
+	  }
+	  if(key == '1'){
+		  enable_mod_ef = true;
+		  enable_mod_rad = false;
+		  enable_mod_w = false;		  
+	  }
+	  if(key == '2'){
+		  enable_mod_ef = false;
+		  enable_mod_rad = true;
+		  enable_mod_w = false;		  
+	  }
+	  if(key == '3'){
+		  enable_mod_ef = false;
+		  enable_mod_rad = false;
+		  enable_mod_w = true;		  
 	  }
 	}
 

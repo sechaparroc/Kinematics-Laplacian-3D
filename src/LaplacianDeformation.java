@@ -2,6 +2,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 
+import com.joptimizer.algebra.CholeskyFactorization;
+
+import cern.colt.matrix.DoubleMatrix1D;
+import cern.colt.matrix.impl.DenseDoubleMatrix1D;
+import cern.colt.matrix.impl.DenseDoubleMatrix2D;
 import processing.core.PShape;
 import processing.core.PVector;
 import remixlab.dandelion.core.MatrixHelper;
@@ -34,8 +39,12 @@ public class LaplacianDeformation {
 	public ArrayList<Face> faces;	
 	public ArrayList<Edge> edges;	
 	public ArrayList<Anchor> anchors;
-	public SparseDataset A, L, M; 
+	public SparseDataset A, L, M, M_T; 
 	static boolean debug = false;
+	public boolean first_iteration = true;
+	public CholeskyFactorization ch_t;
+	public Matrix LHS;
+	
 	
 	public class Anchor{
 		public class AnchorAttribs{
@@ -199,9 +208,9 @@ public class LaplacianDeformation {
 			int degree = v_i.neighbors.size();
 			for(Vertex v_j : v_i.neighbors){
 				L.set(v_i.idx, v_j.idx, -1./degree);
-				dx += -(1./degree) * v_j.v.x;
-				dy += -(1./degree) * v_j.v.y;
-				dz += -(1./degree) * v_j.v.z;
+				dx = dx  -((1./degree) * v_j.v.x);
+				dy = dy  -((1./degree) * v_j.v.y);
+				dz = dz  -((1./degree) * v_j.v.z);
 				M.set(v_i.idx, v_j.idx, -1./degree);
 				M.set(v_i.idx + n, v_j.idx + n, -1./degree);				
 				M.set(v_i.idx + 2*n, v_j.idx + 2*n, -1./degree);				
@@ -250,62 +259,50 @@ public class LaplacianDeformation {
 		}
 		return null;
 	}
-	
-	public void addAnchorByDist(ArrayList<Anchor> anchors, Utilities.CustomModelFrame model, Bone b, int i, float percentage){
-		PVector p2 = new PVector(b.model_pos.x(), b.model_pos.y(), b.model_pos.z());
-		PVector p1 = new PVector(b.parent.model_pos.x(), b.parent.model_pos.y(), b.parent.model_pos.z());
-		PVector p_mid = PVector.add(p1, p2);
-		p_mid.mult(0.5f);
-		//percentage is the total of vertices to add to the anchor
-		int num_anchors = (int) (percentage * vertices.size());
-		int s1 = 0, s2 = 0, s3 = 0;
-		System.out.println("num anchors %%%%" + num_anchors + "num vert" + vertices.size());
-		ArrayList<Vertex> sorted_p1 = sortByDistance(new ArrayList<Vertex>(vertices.values()), p1);
-		ArrayList<Vertex> sorted_p2 = sortByDistance(new ArrayList<Vertex>(vertices.values()), p2);
-		ArrayList<Vertex> sorted_p3 = sortByDistance(new ArrayList<Vertex>(vertices.values()), p_mid);
-		ArrayList<Vertex> sorted = new ArrayList<Vertex>();
-		for(int c = 0; c < num_anchors/3; c++){
-			sorted.add(sorted_p1.get(c));
-			s1++;
-		}
-		for(int c = 0; c < num_anchors/3; c++){
-			if(!sorted.contains(sorted_p2.get(c))){
-				sorted.add(sorted_p2.get(c));
-				s2++;
+
+	  public void addAnchorByDist(ArrayList<LaplacianDeformation.Anchor> anchors, Utilities.CustomModelFrame model, Bone b, int i, float percentage){
+			PVector p2 = new PVector(b.model_pos.x(), b.model_pos.y(),b.model_pos.z());
+			PVector p1 = new PVector(b.parent.model_pos.x(), b.parent.model_pos.y(), b.parent.model_pos.z());
+		    float rad = b.radiusX/model.magnitude();
+			//orthogonal axis
+			//percentage is the total of vertices to add to the anchor
+			percentage = percentage > 1  ? 1 : percentage;
+			if(debug)System.out.println("num anchors %%%%" + percentage + "num vert" + vertices.size());
+			ArrayList<Vertex> sorted = new ArrayList<Vertex>();
+			for(Vertex v : vertices.values()){
+				float[] dist = Utilities.getDistance(new Vec(v.v.x, v.v.y, v.v.z), b);
+				if((percentage/2. >= Math.abs(0.5 - dist[0]) 
+						|| (b.children().size() == 0 && dist[0] > 0.5)) && dist[0]<1){
+					System.out.println("dist ----- u: " + dist[0] + " -----  dist : " + dist[1]);
+					System.out.println("percentage ----- %: " + percentage);
+					System.out.println("rad ----- %: " + rad);
+					System.out.println("rad ----- %: " + rad*model.magnitude());
+					Vec algo = model.coordinatesOf(new Vec(0,0, b.radiusX));
+					System.out.println("rad ----- %: " + algo.magnitude());
+					if(dist[1] <= rad){
+						sorted.add(v);
+					}
+				}
 			}
-		}
-		for(int c = 0; c < num_anchors/3; c++){
-			if(!sorted.contains(sorted_p3.get(c))){
-				sorted.add(sorted_p3.get(c));
-				s3++;
+			Vertex n = getNearest(sorted, p1);
+			Vertex f = getFarthest(sorted, p1);		
+			//float nearest = PVector.dist(n.v, p1);
+			//float farthest = PVector.dist(f.v, p1);
+			for(Vertex v : sorted){
+				//float weight = Math.abs((farthest - PVector.dist(p1, v.v)))/Math.abs((farthest - nearest ));
+				if(debug)System.out.println("################# <<<<<<<<<<<<<---- : d " + PVector.dist(p1, v.v));			
+				//if(debug)System.out.println("################# <<<<<<<<<<<<<---- : weight " + weight);
+				Vec initial = model.coordinatesOf(b.parent.position().get());
+				Anchor anchor = new Anchor(b, v, i, new PVector(initial.x(), initial.y(), initial.z()), 0);
+				Anchor a = containsAnchor(this.anchors, v);
+				if(a == null){
+					anchors.add(anchor);
+				}else{
+					a.addAttrib(b,new PVector(initial.x(), initial.y(), initial.z()),0);
+				}			
 			}
-		}
-		
-		Vertex n = getNearest(sorted, p1);
-		Vertex f = getFarthest(sorted, p1);		
-		float nearest = PVector.dist(n.v, p1);
-		float farthest = PVector.dist(f.v, p1);
-		for(Vertex v : sorted){
-			float weight = Math.abs((farthest - PVector.dist(p1, v.v)))/Math.abs((farthest - nearest ));
-			if(debug)System.out.println("################# <<<<<<<<<<<<<---- : n1 " + nearest);
-			if(debug)System.out.println("################# <<<<<<<<<<<<<---- : f1 " + farthest);
-			if(debug)System.out.println("################# <<<<<<<<<<<<<---- : n2 " + nearest);			
-			if(debug)System.out.println("################# <<<<<<<<<<<<<---- : f2 " + farthest);			
-			if(debug)System.out.println("################# <<<<<<<<<<<<<---- : d " + PVector.dist(p1, v.v));			
-			if(debug)System.out.println("################# <<<<<<<<<<<<<---- : weight " + weight);
-			Vec initial = model.coordinatesOf(b.parent.position().get());
-			Anchor anchor = new Anchor(b, v, i, new PVector(initial.x(), initial.y(), initial.z()), 0);
-			Anchor a = containsAnchor(this.anchors, v);
-			if(a == null){
-				anchors.add(anchor);
-			}else{
-				a.addAttrib(b,new PVector(initial.x(), initial.y(), initial.z()),0);
-			}			
-		}
-	}
-	
-	
-	
+	  }	
+
 	
 	public void calculateLaplacian(){
 		int n = vertices.size();	
@@ -380,9 +377,11 @@ public class LaplacianDeformation {
 				idx++;
 			}
 		}
-	}		
+	}	
 	
-	public ArrayList<PVector> solveLaplacian(){
+
+	public void getLHS(){
+		if(!first_iteration) return;
 		int n = vertices.size();			
 		SparseDataset M = new SparseDataset();
 		SparseDataset M_T = new SparseDataset();
@@ -394,23 +393,60 @@ public class LaplacianDeformation {
 			}
 		}
 		int m_dim = M.size();
-		double[] RHS = new double[m_dim + 3*anchors.size()];		
-		
+		ArrayList<Anchor> anchors = new ArrayList<Anchor>();
+		anchors.addAll(this.anchors);
+		if(debug)System.out.println("m_dim : " + m_dim);		
 		for(Anchor anchor : anchors){
 			M.set(m_dim, anchor.vertex.idx, anchor.weight);
 			M_T.set(anchor.vertex.idx, m_dim, anchor.weight);
-			RHS[m_dim++] = anchor.weight*anchor.pos.x;
+			m_dim++;
 			M.set(m_dim, anchor.vertex.idx + n, anchor.weight);
 			M_T.set(anchor.vertex.idx + n, m_dim, anchor.weight);
-			RHS[m_dim++] = anchor.weight*anchor.pos.y;
+			m_dim++;
 			M.set(m_dim, anchor.vertex.idx + 2*n, anchor.weight);
 			M_T.set(anchor.vertex.idx + 2*n, m_dim, anchor.weight);
-			RHS[m_dim++] = anchor.weight*anchor.pos.z;
+			m_dim++;
 		}
 		//Solve
+		System.out.println("antes de mul");
 		SparseMatrix MMT = M.toSparseMatrix().transpose().times(M.toSparseMatrix()); 
-		Matrix LHS = new Matrix(matrixToArray(MMT), true, true);
+		this.LHS = new Matrix(matrixToArray(MMT), true, true);
+
+		this.M_T = M_T;
+		
+		DenseDoubleMatrix2D LHS_T = new DenseDoubleMatrix2D(matrixToArray(LHS));
+		//SparseDoubleMatrix2D LHS_T = new SparseDoubleMatrix2D(matrixToArray(LHS));
+		//LHS_T.trimToSize();
+		ch_t = null;
+		try {
+			ch_t = new CholeskyFactorization(LHS_T);
+		} catch (Exception e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		//CholeskySparseFactorization ch_t = new CholeskySparseFactorization(LHS_T);
+		try {
+			ch_t.factorize();
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		first_iteration = false;
+	}
+	
+	
+	public ArrayList<PVector> solveLaplacian(){
+		int n = vertices.size();			
+		int m_dim = M.size();		
+		double[] RHS = new double[m_dim + 3*anchors.size()];		
+		for(Anchor anchor : anchors){
+			RHS[m_dim++] = anchor.weight*anchor.pos.x;
+			RHS[m_dim++] = anchor.weight*anchor.pos.y;
+			RHS[m_dim++] = anchor.weight*anchor.pos.z;
+		}
 		Matrix M_aux = new Matrix(M_T.toArray());		
+		System.out.println("despues de mul");
+
 		//double 
 		double[] RHSS = new double[M_aux.nrows()];
 		M_aux.ax(RHS, RHSS);
@@ -418,8 +454,12 @@ public class LaplacianDeformation {
 		if(debug)printArr("new rhs", RHSS);
 		if(debug)printMat("m cond", M.toArray());
 		double[] new_coords = new double[LHS.ncols()];	
-		CholeskyDecomposition ch = LHS.cholesky();
-		ch.solve(RHSS, new_coords);		
+		DenseDoubleMatrix1D RHSS_T = new DenseDoubleMatrix1D(RHSS);
+		DoubleMatrix1D new_coords_t = ch_t.solve(RHSS_T);
+		new_coords = new_coords_t.toArray();
+		//CholeskyDecomposition ch = LHS.cholesky();
+		//QRDecomposition ch = new QRDecomposition(M.toArray());
+		//ch.solve(RHSS, new_coords);		
 		ArrayList<PVector> new_img = new ArrayList<PVector>();
 		for(int i = 0; i < n; i++){
 			new_img.add(new PVector((float)new_coords[i], (float)new_coords[i+n], (float)new_coords[i+2*n]));
