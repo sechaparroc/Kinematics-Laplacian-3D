@@ -68,7 +68,7 @@ public class Utilities{
 	}
 
 	public static  Vec[][] getFaces(CustomModelFrame m){
-	  Vec[] cub = getCube(m.shape());
+	  Vec[] cub = getCube(m.getShape());
 	  Vec[][] faces = new Vec[6][4];
 	  faces[0][0] = m.inverseCoordinatesOf(new Vec(cub[0].x(), cub[0].y(), cub[0].z()));
 	  faces[0][1] = m.inverseCoordinatesOf(new Vec(cub[1].x(), cub[0].y(), cub[0].z()));
@@ -219,22 +219,42 @@ public class Utilities{
 		  p = p_group;
 		  f.setShape(p);
 		}
+		
+		//clone a shape and stablish a color to the new one
+		public static PShape cloneShape(PApplet ap, PShape p, int c, boolean fill){
+			PShape clone = ap.createShape(PConstants.GROUP);
+			for(int j = 0; j < p.getChildCount(); j++){
+				PShape pc = p.getChild(j);
+			    PShape p_clone = ap.createShape();
+			    p_clone.beginShape(PConstants.POLYGON);
+			    if(!fill)p_clone.noFill();
+			    else p_clone.fill(c);
+			    p_clone.stroke(c);
+			    for(int i = 0; i < pc.getVertexCount(); i++){
+			      PVector v = pc.getVertex(i);
+			      PVector n = pc.getNormal(i);
+			      p_clone.vertex(v.x,v.y,v.z);
+			      p_clone.normal(n.x,n.y,n.z);
+			    }
+			    p_clone.endShape();
+			    clone.addChild(p_clone);    
+			  }
+			return clone;
+		}
+		
 
 		//fill with a color
-		public static void fillWithColor(CustomModelFrame f, PShape p, int c, boolean fill){
-		  System.out.println("entra 1");
+		public static void fillWithColor(CustomModelFrame f, PShape ps, int c, boolean fill){
 		  PApplet ap = ((Scene) f.scene()).pApplet();	  
 		  PShape p_group = ap.createShape(PConstants.GROUP);
-		  for(int j = 0; j < p.getChildCount(); j++){
-		    System.out.println("entra 2 j : " + j);
-		    PShape pc = p.getChild(j);
+		  for(int j = 0; j < f.sh.getChildCount(); j++){
+		    PShape pc = f.sh.getChild(j);
 		    PShape p_clone = ap.createShape();
 		    p_clone.beginShape(PConstants.POLYGON);
 		    if(!fill)p_clone.noFill();
 		    else p_clone.fill(c);
 		    p_clone.stroke(c);
 		    for(int i = 0; i < pc.getVertexCount(); i++){
-		      System.out.println("entra 3 i : " + i);
 		      PVector v = pc.getVertex(i);
 		      PVector n = pc.getNormal(i);
 		      p_clone.vertex(v.x,v.y,v.z);
@@ -245,20 +265,20 @@ public class Utilities{
 		    p_group.addChild(p_clone);    
 		  }
 		  System.out.println("entra 4");
-		  p = p_group;
-		  f.shape = p;
+		  ps = p_group;
+		  f.sh = ps;
 		}
 	
 	
-	public static class CustomModelFrame extends GenericP5Frame{
-	  PShape shape;
+	public static class CustomModelFrame extends InteractiveFrame{
+	  PShape sh;
 	  public CustomModelFrame(Scene sc, PShape s){
 	    super(sc);
-	    shape = s;
+	    sh = s;
 	  }
 	  
-	  public PShape shape(){
-	    return shape;
+	  public PShape getShape(){
+	    return sh;
 	  }
 	  
 	  public void draw(){
@@ -266,7 +286,7 @@ public class Utilities{
 	    //root.applyWorldTransformation();
 	    scene().applyWorldTransformation(this);
 	    //scene().drawAxes(40);    
-	    scene().pg().shape(shape);    
+	    scene().pg().shape(sh);    
 	    scene().pg().popMatrix();
 	  }
 	}

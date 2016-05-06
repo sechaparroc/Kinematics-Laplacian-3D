@@ -17,9 +17,10 @@ public class IKinematics {
 	http://www.math.ucsd.edu/~sbuss/ResearchWeb/ikmethods/SdlsPaper.pdf
 	*/
 	static LaplacianDeformation laplacian;
+	static Skinning skinning;
 	static boolean debug = false;
 	static float d_max = -1;
-	static float lambda = 0.001f;
+	static float lambda = 0.1f;
 	//public  class InverseKinematics{
 	  //s : end effector position
 	  //theta: rotation joint (1DOF) for each axis
@@ -50,6 +51,32 @@ public class IKinematics {
 	    	if(end_effectors.size() == 0) continue;
 	    	//Get the jacobian
 	    	double[][] jacobian = calculateJacobian(s.bones, end_effectors);
+
+	    	//convert jacobian into full row rank
+	    	ArrayList<Integer> deleted_idx = new ArrayList<Integer>();
+	    	for(int r = 0; r < jacobian.length; r++){
+	    		float sum = 0;
+		    	for(int c = 0; c < jacobian[0].length; c++){
+		    		sum += jacobian[r][c]; 
+		    	}
+		    	if(sum == 0) deleted_idx.add(r);
+	    	}
+	    	if(!deleted_idx.isEmpty()){
+		    	double[][] jacobian_full_rank = new double[jacobian.length - deleted_idx.size()][jacobian[0].length];
+		    	int pos = 0;
+		    	for(int r = 0; r < jacobian.length; r++){
+		    		if(pos < deleted_idx.size()){
+			    		if(r == deleted_idx.get(pos)){
+			    			pos++; continue;
+			    		}
+		    		}
+			    	for(int c = 0; c < jacobian[0].length; c++){
+			    		jacobian_full_rank[r - pos][c] = jacobian[r][c]; 
+			    	}
+		    	}
+		    	jacobian = jacobian_full_rank;
+	    	}
+	    	
 	    	//Get Delta theta
 	    	Basic2DMatrix J = new Basic2DMatrix(jacobian);
 	    	System.out.println("JACO : \n\n\n\n" + J.toString());
@@ -82,11 +109,30 @@ public class IKinematics {
 	    		e_vec[i] = clampMag(e_vec_t[i], d_max);
 	    	}
 	    	//change the way that e is stored
-	    	double[] e = new double[e_vec.length*3];
+	    	double[] e = new double[e_vec.length*3 - deleted_idx.size()];
+	    	int pos = 0;
 	    	for(int i = 0; i < e_vec.length*3;){
-	    		e[i] = e_vec[i/3].x();i++;
-	    		e[i] = e_vec[i/3].y();i++;
-	    		e[i] = e_vec[i/3].z();i++;
+	    		if(pos < deleted_idx.size()){
+		    		if(i == deleted_idx.get(pos)){
+		    			pos++;
+		    		}
+	    		}	    		
+	    		else e[i-pos] = e_vec[i/3].x();
+	    		i++;
+	    		if(pos < deleted_idx.size()){
+		    		if(i == deleted_idx.get(pos)){
+		    			pos++;
+		    		}
+	    		}
+	    		else e[i-pos] = e_vec[i/3].y();
+	    		i++;
+	    		if(pos < deleted_idx.size()){
+		    		if(i == deleted_idx.get(pos)){
+		    			pos++;
+		    		}
+	    		}
+	    		else e[i-pos] = e_vec[i/3].z();
+	    		i++;	    		
 	    	}
 	    	BasicVector e_v = new BasicVector(e);
 	    	System.out.println("error _v -----------------: + \n" + e_v.toString());
@@ -157,6 +203,23 @@ public class IKinematics {
 	    //calc 3 rows corresponding to a end effector    
 	    int i = 0;
 	    for(Bone s_i : end_effectors){
+	      //clamp target dist to a reachable pos
+	      float max_dist = 0;
+	      Bone aux =  s_i;
+	      while(aux.parent != null){
+	    	  max_dist += Vec.distance(aux.position(), aux.parent.position());
+	    	  aux = aux.parent;
+	      }
+	      Bone r = s_i.getRoot();
+	      Vec new_pos = Vec.subtract(s_i.final_ef_pos, r.position());
+	      float dist = new_pos.magnitude();
+	      if(dist > max_dist){
+	    	  new_pos = Vec.subtract(s_i.final_ef_pos, r.position());
+		      new_pos.normalize();
+		      new_pos.multiply(max_dist);
+		      new_pos.add(r.position());
+	    	  s_i.final_ef_pos = new_pos;
+	      }
 	      int j = 0;
 	      for(Bone theta_j : joints){
 	        //check if the joint could move the end effector
@@ -274,7 +337,7 @@ public class IKinematics {
 	    	    
 	    for(LaplacianDeformation.Anchor anchor : laplacian.anchors){	    	
 	    	PVector final_pos = new PVector(0,0,0);
-	    	PShape face = Kinematics.original_fig.shape().getChild(
+	    	PShape face = Kinematics.original_fig.getShape().getChild(
 	    			anchor.vertex.idx_shape.get(0)[0]);
 	    	anchor.pos = face.getVertex(anchor.vertex.idx_shape.get(0)[1]);
 	    	
@@ -309,14 +372,14 @@ public class IKinematics {
 		        if(debug)System.out.println("pos : " + vec + " new pos : " + new_pos);	        
 		        //apply the weights
 		        PVector new_pos_wi = anchor.pos.get();
-		        new_pos_wi.mult(ats.weight);
+		        new_pos_wi.mult(ats.weight*0);
 		        final_pos.add(new_pos_wi);
 		        if(debug)System.out.println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& asdfasd sad _  :" + ats.weight);
 		        PVector new_pos_w = new PVector(new_pos.x(), new_pos.y(),new_pos.z());
-		        new_pos_w.mult(1 - ats.weight);
+		        new_pos_w.mult(ats.weight);
 		        final_pos.add(new_pos_w);
 		        
-	        	anchor.weight = 1f;		        	
+	        	//anchor.weight = 1f;		        	
 		        //anchor.pos = new_pos_w;
 		        //update old values
 				ats.initial_pos = new PVector(bone.parent.model_pos.x() , bone.parent.model_pos.y(), bone.parent.model_pos.z());
@@ -333,26 +396,66 @@ public class IKinematics {
 				if(debug)System.out.println("final_pos " + final_pos);
 	    	}
 	    	anchor.pos = final_pos;
-	    	anchor.pos.mult(1.f/anchor.attribs.size());
+	    	anchor.pos.mult(1.f/anchor.weight);
 	    }
 	    //solve the laplacian system
-	    laplacian.getLHS();	    
+	    //set to true to use Native approach
+	    laplacian.getLHS(false);	    
 		ArrayList<PVector> new_positions = laplacian.solveLaplacian();
+	    //ArrayList<PVector> new_positions = laplacian.solveLaplacianNative();
 		for(LaplacianDeformation.Vertex vertex : laplacian.vertices.values()){
 			for(int[] idxs : vertex.idx_shape){
-				PShape face = Kinematics.original_fig.shape().getChild(idxs[0]);
+				PShape face = Kinematics.original_fig.getShape().getChild(idxs[0]);
 				//System.out.println("prev - : " + face.getVertex(idxs[1]));
 				face.setVertex(idxs[1], new_positions.get(vertex.idx));
 				//System.out.println("next - : " + face.getVertex(idxs[1]));
 			}
-		}
+		}				
 	  }
+	  
+	  //Skinning based on Smooth Skinning algorithm
+	  public static void applyTransformationsLinearBlending(Utilities.CustomModelFrame model){
+	    if(skinning == null) return;	    
+	    for(Skeleton s : Kinematics.skeletons){
+	    	Bone root = s.frame.getRoot();
+	    	for(Bone bone : root.getChildrenWS()){
+	    		//update old values
+		    	float roll  = bone.joint_axis_x.angle - bone.prev_angle.x();      
+		    	float pitch = bone.joint_axis_y.angle - bone.prev_angle.y();      
+		    	float yaw   = bone.joint_axis_z.angle - bone.prev_angle.z();      
+		    	Quat q = new Quat(roll, pitch, yaw);
+		    	Quat q1 = new Quat(bone.joint_axis_x.angle, bone.joint_axis_y.angle, bone.joint_axis_z.angle);
+		    	Quat q2 = new Quat(bone.prev_angle.x(), bone.prev_angle.y(), bone.prev_angle.z());
+		    	q = q1;
+		    	q.compose(q2.inverse());
+		    	Vec mov = Vec.subtract(bone.parent.model_pos, bone.prev_pos);
+		        Vec rot = Vec.subtract(bone.model_pos, bone.prev_pos);
+		        rot = q.rotate(rot);
+				rot.add(bone.prev_pos);
+				//apply translation
+				rot.add(mov);
+				bone.model_pos = rot;
+				bone.prev_pos = bone.parent.model_pos.get();
+				bone.prev_angle = new Vec(bone.joint_axis_x.angle, bone.joint_axis_y.angle, bone.joint_axis_z.angle );
+	    	}
+	    }
+    	for(Skinning.Vertex v : skinning.vertices.values()){
+    		v.applyTransformation(model);
+			for(int[] idxs : v.idx_shape){
+				PShape face = model.getShape().getChild(idxs[0]);
+				//System.out.println("prev - : " + face.getVertex(idxs[1]));
+				face.setVertex(idxs[1], v.v);
+				//System.out.println("next - : " + face.getVertex(idxs[1]));
+			}	    		
+    	}
+	  }	  
+	  
 	  
 	  //Skinning based on laplacian deformation
 	  public static void execSkinning(Utilities.CustomModelFrame model, ArrayList<Bone> bones){
 	    laplacian = new LaplacianDeformation();
 	    //update laplacian info of each bone
-	  	laplacian.setup(model.shape());
+	  	laplacian.setup(model.getShape());
 	  	//for each bone get its position and  add an Anchor to nearest vertices
 	  	for(int i = 0; i < bones.size(); i++){
 	  		bones.get(i).model_pos = model.coordinatesOf(bones.get(i).position().get());
@@ -366,13 +469,52 @@ public class IKinematics {
 	  	}
 	  	laplacian.calculateLaplacian();
 	  }  
+	  
+	  public static void execSkinningLinearBlending(Utilities.CustomModelFrame model, ArrayList<Bone> bones){
+		    skinning = new Skinning();
+		  	//for each bone get its position and  add an Anchor to nearest vertices
+		  	for(int i = 0; i < bones.size(); i++){
+		  		bones.get(i).model_pos = model.coordinatesOf(bones.get(i).position().get());
+		    	float roll  = bones.get(i).joint_axis_x.angle;      
+		    	float pitch = bones.get(i).joint_axis_y.angle;      
+		    	float yaw   = bones.get(i).joint_axis_z.angle;      	  		
+		  		bones.get(i).prev_angle = new Vec(roll, pitch, yaw);
+		  		if(bones.get(i).parent == null) continue;
+		  		bones.get(i).prev_pos = model.coordinatesOf(bones.get(i).parent.position().get());
+		  	}
+		  	skinning.setup(model, bones);
+	  }
+	  
 	//}
+	  public static void drawWeights(Scene sc, Utilities.CustomModelFrame model){
+		  if(skinning == null) return;
+		  for(Skinning.Vertex vertex : skinning.vertices.values()){
+			  PShape f = model.getShape().getChild(vertex.idx_shape.get(0)[0]);
+		      PVector v = f.getVertex(vertex.idx_shape.get(0)[1]);
+		      Vec v_w = model.inverseCoordinatesOf(new Vec(v.x, v.y, v.z));
+		      Skinning.Vertex.VertexAttribs  atss = null;
+		      for(Skinning.Vertex.VertexAttribs ats : vertex.attribs){
+		    	  if(atss == null) atss = ats;
+		    	  else if(atss.weight < ats.weight){
+		    		  atss = ats;
+		    	  }
+		      }
+			  if(atss.weight < 0.5) continue;
+		      sc.pg().pushStyle();
+			  sc.pg().strokeWeight(5);
+			  sc.pg().stroke(atss.bone.colour);
+			  sc.pg().point(v_w.x(), v_w.y(), v_w.z());
+			  sc.pg().popStyle();
+
+		  }
+	  }
+
 	  
 	  public static void drawAnchors(Scene sc, Utilities.CustomModelFrame model){
 		  if(laplacian == null) return;
 		  for(LaplacianDeformation.Anchor anchor : laplacian.anchors){
 			  LaplacianDeformation.Vertex vertex = anchor.vertex;
-			  PShape f = model.shape.getChild(vertex.idx_shape.get(0)[0]);
+			  PShape f = model.getShape().getChild(vertex.idx_shape.get(0)[0]);
 		      PVector v = f.getVertex(vertex.idx_shape.get(0)[1]);
 		      Vec v_w = model.inverseCoordinatesOf(new Vec(v.x, v.y, v.z));
 			  for(LaplacianDeformation.Anchor.AnchorAttribs ats : anchor.attribs){

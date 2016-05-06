@@ -45,6 +45,9 @@ public class LaplacianDeformation {
 	public CholeskyFactorization ch_t;
 	public Matrix LHS;
 	
+	//Used for native information
+	public SparseMatrix LHS_S;
+	
 	
 	public class Anchor{
 		public class AnchorAttribs{
@@ -290,16 +293,20 @@ public class LaplacianDeformation {
 			//float farthest = PVector.dist(f.v, p1);
 			for(Vertex v : sorted){
 				//float weight = Math.abs((farthest - PVector.dist(p1, v.v)))/Math.abs((farthest - nearest ));
+				float weight = Utilities.getDistance(new Vec (v.v.x, v.v.y), b)[1];
+				weight = 1.f/(float)Math.pow(weight, 3);
 				if(debug)System.out.println("################# <<<<<<<<<<<<<---- : d " + PVector.dist(p1, v.v));			
 				//if(debug)System.out.println("################# <<<<<<<<<<<<<---- : weight " + weight);
 				Vec initial = model.coordinatesOf(b.parent.position().get());
-				Anchor anchor = new Anchor(b, v, i, new PVector(initial.x(), initial.y(), initial.z()), 0);
+				Anchor anchor = new Anchor(b, v, i, new PVector(initial.x(), initial.y(), initial.z()), weight);
 				Anchor a = containsAnchor(this.anchors, v);
 				if(a == null){
 					anchors.add(anchor);
+					anchor.weight += weight; 
 				}else{
-					a.addAttrib(b,new PVector(initial.x(), initial.y(), initial.z()),0);
-				}			
+					a.weight += weight;
+					a.addAttrib(b,new PVector(initial.x(), initial.y(), initial.z()),weight);
+				}							
 			}
 	  }	
 
@@ -380,7 +387,7 @@ public class LaplacianDeformation {
 	}	
 	
 
-	public void getLHS(){
+	public void getLHS(boolean nat){
 		if(!first_iteration) return;
 		int n = vertices.size();			
 		SparseDataset M = new SparseDataset();
@@ -410,6 +417,8 @@ public class LaplacianDeformation {
 		//Solve
 		System.out.println("antes de mul");
 		SparseMatrix MMT = M.toSparseMatrix().transpose().times(M.toSparseMatrix()); 
+		
+		this.LHS_S = MMT;
 		this.LHS = new Matrix(matrixToArray(MMT), true, true);
 
 		this.M_T = M_T;
@@ -417,19 +426,21 @@ public class LaplacianDeformation {
 		DenseDoubleMatrix2D LHS_T = new DenseDoubleMatrix2D(matrixToArray(LHS));
 		//SparseDoubleMatrix2D LHS_T = new SparseDoubleMatrix2D(matrixToArray(LHS));
 		//LHS_T.trimToSize();
-		ch_t = null;
-		try {
-			ch_t = new CholeskyFactorization(LHS_T);
-		} catch (Exception e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-		//CholeskySparseFactorization ch_t = new CholeskySparseFactorization(LHS_T);
-		try {
-			ch_t.factorize();
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+		if(!nat){
+			ch_t = null;
+			try {
+				ch_t = new CholeskyFactorization(LHS_T);
+			} catch (Exception e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+			//CholeskySparseFactorization ch_t = new CholeskySparseFactorization(LHS_T);
+			try {
+				ch_t.factorize();
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
 		first_iteration = false;
 	}
@@ -562,4 +573,59 @@ public class LaplacianDeformation {
 		}
 		return result;
 	}
+	
+	static int sparseToArrays(SparseMatrix m, ArrayList<Integer> ri, ArrayList<Integer> ci, ArrayList<Float> v){
+		int count = 0;
+		for(int i = 0; i < m.nrows(); i++){
+			for(int j = 0; j < m.ncols(); j++){
+				float val = (float)m.get(i, j);
+				if(val != 0){
+					ri.add(i);
+					ci.add(j);
+					v.add( val);
+					count++;
+				}
+			}
+		}
+		return count;
+	}
+
+	public ArrayList<PVector> solveLaplacianNative(){
+		int n = vertices.size();			
+		int m_dim = M.size();		
+		double[] RHS = new double[m_dim + 3*anchors.size()];		
+		for(Anchor anchor : anchors){
+			RHS[m_dim++] = anchor.weight*anchor.pos.x;
+			RHS[m_dim++] = anchor.weight*anchor.pos.y;
+			RHS[m_dim++] = anchor.weight*anchor.pos.z;
+		}
+		Matrix M_aux = new Matrix(M_T.toArray());		
+		System.out.println("despues de mul");
+
+		//double 
+		double[] RHSS = new double[M_aux.nrows()];
+		M_aux.ax(RHS, RHSS);
+		if(debug)printArr("rhs " + RHS.length, RHS);
+		if(debug)printArr("new rhs", RHSS);
+		if(debug)printMat("m cond", M.toArray());
+		float[] new_coords = new float[LHS.ncols()];	
+		ArrayList<Integer> ri = new ArrayList<Integer>();	
+		ArrayList<Integer> ci = new ArrayList<Integer>();	
+		ArrayList<Float> v = new ArrayList<Float>();	
+
+		float[] RHSS_f = new float[RHSS.length];
+		for(int i = 0; i < RHSS.length; i++) RHSS_f[i] = (float)RHSS[i];
+		
+		sparseToArrays(LHS_S, ri, ci, v);
+		CholeskyNative.getNewCoords(ri, ci, v, new_coords, RHSS_f, LHS_S.ncols(), true);		
+		//CholeskyDecomposition ch = LHS.cholesky();
+		//QRDecomposition ch = new QRDecomposition(M.toArray());
+		//ch.solve(RHSS, new_coords);		
+		ArrayList<PVector> new_img = new ArrayList<PVector>();
+		for(int i = 0; i < n; i++){
+			new_img.add(new PVector((float)new_coords[i], (float)new_coords[i+n], (float)new_coords[i+2*n]));
+		}
+		return new_img;		
+	}
+
 }

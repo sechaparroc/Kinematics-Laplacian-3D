@@ -13,7 +13,7 @@
 	</classpathentry>
 	<classpathentry kind="con" path="org.eclipse.jdt.USER_LIBRARY/OCVProscene"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.USER_LIBRARY/Papaya"/>
-	<classpathentry kind="con" path="org.eclipse.jdt.USER_LIBRARY/ProcessingCore"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.USER_LIBRARY/ProcessingCore3"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.USER_LIBRARY/Proscene"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.USER_LIBRARY/SmileCore"/>
 	<classpathentry kind="con" path="org.eclipse.m2e.MAVEN2_CLASSPATH_CONTAINER">

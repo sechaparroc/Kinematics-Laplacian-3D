@@ -2,6 +2,7 @@ import processing.core.*;
 
 import java.util.*;
 
+
 //-----------------------------------------------
 //Proscene
 //Use InteractiveModelFrame and override actions
@@ -60,8 +61,15 @@ public class Kinematics extends PApplet{
 	public static boolean bounding_rect = true;
 	public static int current_axis = 0;
 	
-	public void setup(){
-	  size(all_width, all_height, P3D);
+	public static void main(String[] args){
+		PApplet.main(Kinematics.class.getName());				
+	}
+	
+	public void settings(){
+	  size(all_width, all_height, P3D);		
+	}
+	
+	public void setup(){		
 	  main_graphics = createGraphics(all_width,all_height,P3D);
 	  main_scene = new Scene(this, main_graphics);
 	  aux_graphics = createGraphics(all_width/4,all_height/3,P3D);
@@ -70,33 +78,53 @@ public class Kinematics extends PApplet{
 	  main_scene.setGridVisualHint(true);
 	  aux_scene.setAxesVisualHint(true);
 	  aux_scene.setGridVisualHint(false);
-	  main_scene.setRadius(50);
-	  main_scene.camera().setType(Camera.Type.ORTHOGRAPHIC);
-	  aux_scene.camera().setType(Camera.Type.ORTHOGRAPHIC);
-	  AxisPlaneConstraint constrain = new EyeConstraint(aux_scene.eye());
-	  constrain.setRotationConstraint(Type.FORBIDDEN, new Vec(0,0,1));
-	  aux_scene.eye().frame().setConstraint(constrain);
 	  control_frame = new JointControl(aux_scene);
 	  //set up the mesh to load
 	  figure = loadShape("human2.obj");
 	  original_fig = new Utilities.CustomModelFrame(main_scene, figure);
 	  //original_fig.translate(-50,50,0);
-	  original_fig.scale(3f);
+	  //original_fig.scale(3f);
 	  //original_fig.rotate(0,0,PI,0);
 	  //get bounding rect center
 	  r_bounds = Utilities.getCube(figure);
 	  r_center = new Vec((r_bounds[0].x() + r_bounds[1].x())/2.f, (r_bounds[0].y() + r_bounds[1].y())/2.f, (r_bounds[0].z() + r_bounds[1].z())/2.f);
 	  println(figure.getChildCount());
 	  main_graphics.noSmooth();  
-	  Utilities.fillWithColor(original_fig, figure, color(255,0,0,200), fill);
+	  figure = Utilities.cloneShape(this, figure, color(255,0,0,200), fill);
+	  original_fig.sh = figure;
+	  //set radius control point
+	  float radius = Math.max(Math.abs(r_bounds[1].x() - r_bounds[0].x()), Math.abs(r_bounds[1].y() - r_bounds[0].y()));
+	  radius = Math.max(radius, Math.abs(r_bounds[1].z() - r_bounds[0].z()));
+	  //settings for the scenes
+	  main_scene.setBoundingBox(original_fig.inverseCoordinatesOf(new Vec(-radius*.6f,-radius*.6f,-radius*.6f)), 
+			  original_fig.inverseCoordinatesOf(new Vec(radius*.6f,radius*.6f,radius*.6f)));
+	  main_scene.showAll();
+	  main_scene.flip();
+	  main_scene.camera().setType(Camera.Type.ORTHOGRAPHIC);
+	  aux_scene.camera().setType(Camera.Type.ORTHOGRAPHIC);
+	  AxisPlaneConstraint constrain = new EyeConstraint(aux_scene.eye());
+	  constrain.setRotationConstraint(Type.FORBIDDEN, new Vec(0,0,1));
+	  aux_scene.eye().frame().setConstraint(constrain);
+
+	  
+	  radius *= 0.025f;
+	  Bone.DEFAULT_RAD = radius;
+
 	  //add a initial point in the xy plane
 	  Vec point_world = new Vec((r_bounds[0].x() + r_bounds[1].x())/2.f, (r_bounds[0].y() + r_bounds[1].y())/2.f, Math.max(r_bounds[0].z(), r_bounds[1].z()));
 	  point_world = original_fig.inverseCoordinatesOf(point_world);
-	  skeletons.add(new Skeleton(main_scene,point_world.x(), point_world.y(),point_world.z()));
+	  skeletons.add(new Skeleton(main_scene,0,0,0));
+	  skeletons.get(0).frame.setReferenceFrame(original_fig);
+	  skeletons.get(0).frame.translate(original_fig.coordinatesOf(point_world));	  
+	  //load JNI LIB
+	  CholeskyNative.startNative();
+	  
 	}
 
 	public void draw(){
-	  handleAgents();  
+	  IKinematics.executeDLS();
+ 	  handleAgents();  
+	  lights();
 	  main_graphics.beginDraw();
 	  main_scene.beginDraw();
 	  main_graphics.background(0);
@@ -104,6 +132,7 @@ public class Kinematics extends PApplet{
 	  if(bounding_rect) Utilities.drawCube(original_fig, main_graphics);
 	  drawBones();
 	  IKinematics.drawAnchors(main_scene, original_fig);	  
+	  //IKinematics.drawWeights(main_scene, original_fig);
 	  main_scene.endDraw();
 	  main_graphics.endDraw();    
 	 image(main_graphics, main_scene.originCorner().x(), main_scene.originCorner().y());
@@ -200,11 +229,13 @@ public class Kinematics extends PApplet{
 	  if(key == 'z' || key == 'Z'){
 	    if(last_selected_bone != null){
 	    	IKinematics.execSkinning(original_fig,last_selected_bone.skeleton.bones);
+	    	//IKinematics.execSkinningLinearBlending(original_fig, last_selected_bone.skeleton.bones);
 	    	System.out.println("sale");
 	    }
 	  }
 	  if(key == 'l' || key == 'L'){
 		  IKinematics.applyTransformations(original_fig);
+		  //IKinematics.applyTransformationsLinearBlending(original_fig);
 	  }
 	  if(key == '4'){
 		  current_axis = 0;

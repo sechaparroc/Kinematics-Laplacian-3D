@@ -7,9 +7,12 @@ import remixlab.dandelion.core.*;
 
 //the angle of a bone is the angle btwn the bone and its parent
 
-public class Bone extends GenericP5Frame{
-  float radiusX = 1, radiusY = 10;
+public class Bone extends InteractiveFrame{
+  static int auto_idx = 0;	
+  static float DEFAULT_RAD = 15; 	
+  float radiusX = DEFAULT_RAD*1.01f, radiusY = DEFAULT_RAD;
   int colour = -1;
+  int idx = auto_idx++;
   Skeleton skeleton;
   boolean selected = false;
   ArrayList<Bone> children = new ArrayList<Bone>();
@@ -30,6 +33,7 @@ public class Bone extends GenericP5Frame{
   float PI = (float) Math.PI;
 
   public void setupProfile(){
+	  this.setGrabsInputThreshold(this.inverseCoordinatesOf(new Vec(0,0,radiusY)).magnitude(),true);
 	  this.setClickBinding(MouseAgent.LEFT_ID, 1, "performClickEvent");
 	  this.setClickBinding(MouseAgent.RIGHT_ID, 1, "performClickEvent");
 	  this.setMotionBinding(MouseAgent.LEFT_ID, "performMotionEvent");
@@ -255,19 +259,7 @@ public class Bone extends GenericP5Frame{
     while(a >  PI) a -= 2*PI;
     return a;
   }
-
-  @Override
-  public boolean checkIfGrabsInput(float x, float y){
-    float thresholdX = radiusX;
-    float thresholdY = radiusY;
-    Vec proj = scene().eye().projectedCoordinatesOf(position());
-    if((Math.abs(x - proj.vec[0]) < thresholdY) && (Math.abs(y - proj.vec[1]) < thresholdY)){
-      return true;      
-    }
-    return false;
-  }
-
-  
+ 
   public void performClickEvent(ClickEvent event) {
     if(Kinematics.add_bone){
       if(event.id() == 39){
@@ -388,8 +380,14 @@ public class Bone extends GenericP5Frame{
 		  if(Vec.distance(aux2, aux3) != 0)
 			  scene().pg().line(aux3.x(),aux3.y(),aux3.z(),aux2.x(), aux2.y(), aux2.z());
       }
-      if(!selected)scene().pg().stroke(colour);
-      else scene().pg().stroke(scene().pg().color(0,0,255));
+      if(!selected){
+    	  scene().pg().stroke(colour);
+    	  scene().pg().fill(colour);    	  
+      }
+      else{
+    	  scene().pg().stroke(scene().pg().color(0,0,255));
+    	  scene().pg().fill(colour);    	  
+      }
       scene().pg().pushMatrix();
       scene().pg().translate(aux2.x(), aux2.y(), aux2.z());	
 	  scene().pg().line(-radiusX*v.x(),-radiusX*v.y(),-radiusX*v.z(),
@@ -397,12 +395,25 @@ public class Bone extends GenericP5Frame{
 	  scene().pg().line(-radiusX*u.x(),-radiusX*u.y(),-radiusX*u.z(),
 			  radiusX*u.x(),radiusX*u.y(),radiusX*u.z());            
 	  scene().pg().popMatrix();
-	  scene().pg().strokeWeight(radiusY);      
-      scene().pg().point(aux2.x(),aux2.y(),aux2.z());
+	  //scene().pg().strokeWeight(radiusY);
+	  scene().pg().pushMatrix();
+	  	scene().pg().translate(aux2.x(),aux2.y(),aux2.z());
+	  	scene().pg().box(radiusY,radiusY,radiusY);
+	  	//scene().pg().point(aux2.x(),aux2.y(),aux2.z());
+	  scene().pg().popMatrix();
       if(is_end_effector){
 		  scene().pg().stroke(255,0,0,50);
-    	  Vec aux3 = final_ef_pos;
-		  if(Vec.distance(aux2, aux3) != 0)scene().pg().point(aux3.x(),aux3.y(),aux3.z());
+		  scene().pg().fill(255,0,0,50);
+
+		  Vec aux3 = final_ef_pos;
+		  if(Vec.distance(aux2, aux3) != 0){
+			  scene().pg().pushMatrix();
+			  	scene().pg().translate(aux3.x(),aux3.y(),aux3.z());
+			  	scene().pg().box(radiusY,radiusY,radiusY);
+			  	//scene().pg().point(aux2.x(),aux2.y(),aux2.z());
+			  scene().pg().popMatrix();
+			  //scene().pg().point(aux3.x(),aux3.y(),aux3.z());
+		  }
       }
       scene().pg().popStyle();	  
   }
